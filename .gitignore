@@ -1,0 +1,26 @@
+# Compiled binary
+balatro-cli
+
+# Test binary
+*.test
+
+# Go build cache
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go coverage
+*.out
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
