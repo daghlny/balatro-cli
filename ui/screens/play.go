@@ -2,6 +2,7 @@ package screens
 
 import (
 	"fmt"
+	"sort"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -64,7 +65,11 @@ func (s *PlayScreen) Update(msg tea.Msg, game *engine.GameState) tea.Cmd {
 				}
 			}
 		case "s":
-			sortHand(game)
+			sortHandByRank(game)
+			s.cursor = clampCursor(s.cursor, game, s.focusArea)
+		case "S":
+			sortHandBySuit(game)
+			s.cursor = clampCursor(s.cursor, game, s.focusArea)
 		case "q", "ctrl+c":
 			return tea.Quit
 		}
@@ -101,6 +106,14 @@ func (s *PlayScreen) doPlay(game *engine.GameState) {
 }
 
 func (s *PlayScreen) View(game *engine.GameState, width, height int) string {
+	// The PlayScreen instance is reused across rounds (see ui/app.go). When a
+	// new round starts, the engine clears LastBreakdown — mirror that here so
+	// the middle table doesn't keep showing the previous round's cards/score.
+	if game.LastBreakdown == nil {
+		s.tableCards = nil
+		s.tableBD = nil
+	}
+
 	sidebar := components.RenderSidebar(game, height-2)
 	sidebarWidth := 28 // sidebar style width(26) + border
 	rightWidth := width - sidebarWidth
@@ -147,15 +160,14 @@ func (s *PlayScreen) View(game *engine.GameState, width, height int) string {
 		handArea = lipgloss.JoinVertical(lipgloss.Left, handArea, selInfo)
 	}
 
-	statusBar := components.RenderStatusBar(s.Focus(), game, width)
-	return components.ComposePlayLayout(sidebar, jokerArea, tableArea, handArea, statusBar, width, height)
+	return components.ComposePlayLayout(sidebar, jokerArea, tableArea, handArea, width, height)
 }
 
 // renderTable renders the middle table area: played cards + Chips × Mult display.
 func (s *PlayScreen) renderTable(game *engine.GameState, rightWidth int) string {
 	if len(s.tableCards) == 0 && s.tableBD == nil {
 		return lipgloss.NewStyle().Width(rightWidth).Align(lipgloss.Center).
-			Height(12).Foreground(components.ColorDim).
+			Height(16).Foreground(components.ColorDim).
 			Render("\n\n\n\n    空格选牌  Enter 出牌")
 	}
 
@@ -168,7 +180,7 @@ func (s *PlayScreen) renderTable(game *engine.GameState, rightWidth int) string 
 
 	if s.tableBD == nil {
 		return lipgloss.NewStyle().Width(rightWidth).Align(lipgloss.Center).
-			Height(12).Render(cardsRendered)
+			Height(16).Render(cardsRendered)
 	}
 
 	bd := s.tableBD
@@ -192,7 +204,7 @@ func (s *PlayScreen) renderTable(game *engine.GameState, rightWidth int) string 
 	tableContent := lipgloss.JoinHorizontal(lipgloss.Center, cardsRendered, "   ", scoreInfo)
 
 	return lipgloss.NewStyle().Width(rightWidth).Align(lipgloss.Center).
-		Height(12).Render(tableContent)
+		Height(16).Render(tableContent)
 }
 
 func (s *PlayScreen) Focus() components.FocusTarget {
@@ -215,17 +227,75 @@ func handTypeKeyFromType(ht engine.HandType) string {
 	return keys[ht]
 }
 
-func sortHand(game *engine.GameState) {
-	cards := game.Hand
-	for i := 0; i < len(cards); i++ {
-		for j := i + 1; j < len(cards); j++ {
-			if cards[i].Rank < cards[j].Rank ||
-				(cards[i].Rank == cards[j].Rank && cards[i].Suit > cards[j].Suit) {
-				cards[i], cards[j] = cards[j], cards[i]
-			}
+// sortHandByRank sorts the hand by rank descending (ties broken by suit asc).
+// Selections travel with their cards so the player doesn't lose in-progress picks.
+func sortHandByRank(game *engine.GameState) {
+	sortHandWith(game, func(a, b engine.Card) bool {
+		if a.Rank != b.Rank {
+			return a.Rank > b.Rank
 		}
+		return a.Suit < b.Suit
+	})
+}
+
+// sortHandBySuit groups by suit (Spades → Hearts → Clubs → Diamonds),
+// then orders each group by rank descending.
+func sortHandBySuit(game *engine.GameState) {
+	sortHandWith(game, func(a, b engine.Card) bool {
+		if a.Suit != b.Suit {
+			return a.Suit < b.Suit
+		}
+		return a.Rank > b.Rank
+	})
+}
+
+// sortHandWith reorders the hand using the given comparator while keeping
+// each card's selected flag attached to the card (not the slot).
+func sortHandWith(game *engine.GameState, less func(a, b engine.Card) bool) {
+	n := len(game.Hand)
+	if n == 0 {
+		return
 	}
-	game.SelectedCards = make([]bool, len(cards))
+	type entry struct {
+		card engine.Card
+		sel  bool
+	}
+	entries := make([]entry, n)
+	for i, c := range game.Hand {
+		var sel bool
+		if i < len(game.SelectedCards) {
+			sel = game.SelectedCards[i]
+		}
+		entries[i] = entry{c, sel}
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return less(entries[i].card, entries[j].card)
+	})
+	if len(game.SelectedCards) != n {
+		game.SelectedCards = make([]bool, n)
+	}
+	for i, e := range entries {
+		game.Hand[i] = e.card
+		game.SelectedCards[i] = e.sel
+	}
+}
+
+// clampCursor keeps the cursor within bounds of whichever area is focused.
+func clampCursor(cursor int, game *engine.GameState, focusArea int) int {
+	maxIdx := len(game.Hand) - 1
+	if focusArea == 1 {
+		maxIdx = game.MaxJokerSlots - 1
+	}
+	if cursor < 0 {
+		return 0
+	}
+	if cursor > maxIdx {
+		if maxIdx < 0 {
+			return 0
+		}
+		return maxIdx
+	}
+	return cursor
 }
 
 func maxInt(a, b int) int {

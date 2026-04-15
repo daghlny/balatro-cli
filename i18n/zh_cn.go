@@ -106,11 +106,14 @@ func init() {
 		"ui.chips":            "筹码",
 		"ui.mult":             "倍率",
 		"ui.round":            "回合",
+		"ui.hand_reference":   "牌型速查",
 
 		// Actions
 		"action.play":         "出牌",
 		"action.discard":      "弃牌",
 		"action.sort":         "排序",
+		"action.sort_rank":    "按点数",
+		"action.sort_suit":    "按花色",
 		"action.select":       "选中",
 		"action.buy":          "购买",
 		"action.sell":         "卖出",

@@ -122,6 +122,10 @@ func (g *GameState) ConfirmBossInfo() {
 }
 
 func (g *GameState) startRound() {
+	// Reset the "last scoring breakdown" so neither the sidebar nor the
+	// play screen's table area show stale display from the previous round.
+	g.LastBreakdown = nil
+
 	g.Deck.Shuffle()
 	g.RemainingHands = 4
 	g.RemainingDisc = 3

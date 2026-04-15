@@ -15,8 +15,10 @@ func init() {
 
 		"ui.ante": "Ante", "ui.score": "Score", "ui.target": "Target",
 		"ui.money": "Money", "ui.hands": "Hands", "ui.discards": "Discards",
+		"ui.hand_reference": "Poker Hands",
 
 		"action.play": "Play", "action.discard": "Discard",
+		"action.sort_rank": "Sort Rank", "action.sort_suit": "Sort Suit",
 		"action.start": "Start Game", "action.quit": "Quit",
 
 		"title.name":        "BALATRO",

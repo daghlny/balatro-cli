@@ -6,18 +6,27 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yinuoli/balatro-cli/engine"
-	
 )
 
-// RenderCard renders a 9×7 playing card.
-// selected: card is chosen for play/discard (gold border)
-// focused: cursor is on this card (cyan border)
-// debuffed: card is debuffed by boss (dim)
+// Card inner dimensions (exclusive of the rounded border).
+// Outer size becomes innerCardWidth+2 × innerCardHeight+2 = 18 × 14.
+const (
+	innerCardWidth  = 16
+	innerCardHeight = 12
+)
+
+// RenderCard renders a playing card.
+// selected: chosen for play/discard (gold border)
+// focused:  cursor is on this card (cyan border)
+// debuffed: boss debuff applied (dimmed)
+//
+// The lift animation for selected cards is NOT done here; it happens at the
+// row level inside RenderHand so that the card keeps both of its borders and
+// the "rise above" effect stays consistent across neighbours.
 func RenderCard(card engine.Card, selected, focused, debuffed bool) string {
 	rankStr := card.Rank.String()
 	suitSym := card.Suit.Symbol()
 
-	// Determine foreground color
 	fg := ColorWhite
 	if card.Suit.IsRed() {
 		fg = ColorRed
@@ -26,7 +35,6 @@ func RenderCard(card engine.Card, selected, focused, debuffed bool) string {
 		fg = ColorDim
 	}
 
-	// Determine border color
 	borderColor := ColorBorder
 	if selected {
 		borderColor = ColorSelected
@@ -35,95 +43,114 @@ func RenderCard(card engine.Card, selected, focused, debuffed bool) string {
 		borderColor = ColorFocused
 	}
 
-	// Build the 5 inner lines (7×1 each, padded to width 7)
-	// Line 1: rank top-left
-	// Line 2: empty
-	// Line 3: suit center
-	// Line 4: empty
-	// Line 5: rank bottom-right
-	topLeft := fmt.Sprintf(" %-6s", rankStr)
-	center := fmt.Sprintf("   %s   ", suitSym)
-	bottomRight := fmt.Sprintf(" %6s", rankStr)
-
-	// Trim/pad to exactly 7 chars
-	topLeft = padRight(topLeft, 7)
-	center = padCenter(suitSym, 7)
-	bottomRight = padLeft(rankStr, 7)
-
-	lines := []string{topLeft, "       ", center, "       ", bottomRight}
+	lines := buildCardLines(rankStr, suitSym)
 
 	style := lipgloss.NewStyle().
 		Foreground(fg).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(borderColor).
-		Width(7)
+		Width(innerCardWidth)
 
-	content := strings.Join(lines, "\n")
-	rendered := style.Render(content)
-
-	// If selected, add visual "lift" (1 empty line above, remove 1 below)
-	if selected {
-		renderedLines := strings.Split(rendered, "\n")
-		// Prepend empty line, remove last line
-		lifted := append([]string{""}, renderedLines[:len(renderedLines)-1]...)
-		return strings.Join(lifted, "\n")
-	}
-
-	return rendered
+	return style.Render(strings.Join(lines, "\n"))
 }
 
-// RenderCardBack renders a face-down card.
+// buildCardLines returns the innerCardHeight inner rows for a card.
+// Layout: rank in the upper-left corner, suit symbol centered, rank mirrored
+// in the lower-right corner. Lots of whitespace by design — cards breathe.
+func buildCardLines(rank, suit string) []string {
+	const w = innerCardWidth
+	blank := strings.Repeat(" ", w)
+
+	// Upper-left rank: " K" + padding (right-padded to w).
+	topRank := padRight(fmt.Sprintf(" %s", rank), w)
+	// Lower-right rank: padding + "K " (left-padded to w).
+	bottomRank := padLeft(fmt.Sprintf("%s ", rank), w)
+	// Centered suit row.
+	suitRow := padCenter(suit, w)
+
+	lines := make([]string, innerCardHeight)
+	for i := range lines {
+		lines[i] = blank
+	}
+	// rows (0-indexed of 12): top pad, rank, blank*4, suit, blank*4, bottomRank, bot pad
+	lines[1] = topRank
+	lines[6] = suitRow
+	lines[10] = bottomRank
+	return lines
+}
+
+// RenderCardBack renders a face-down card at the same outer size as RenderCard.
 func RenderCardBack() string {
 	style := lipgloss.NewStyle().
 		Foreground(ColorDim).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(ColorDim).
-		Width(7)
+		Width(innerCardWidth)
 
-	lines := []string{
-		"░░░░░░░",
-		"░░░░░░░",
-		"░░░░░░░",
-		"░░░░░░░",
-		"░░░░░░░",
+	row := strings.Repeat("░", innerCardWidth)
+	lines := make([]string, innerCardHeight)
+	for i := range lines {
+		lines[i] = row
 	}
 	return style.Render(strings.Join(lines, "\n"))
 }
 
 // RenderHand renders a row of cards horizontally.
+//
+// When any card is selected, unselected cards get a leading blank row prepended
+// and the row is top-aligned. That makes selected cards visibly sit one row
+// higher than their neighbours — a proper "lift" — while every card keeps its
+// full border intact.
 func RenderHand(cards []engine.Card, selected []bool, cursorIndex int, debuffed []bool) string {
 	if len(cards) == 0 {
 		return ""
 	}
+
+	anySelected := false
+	for _, sel := range selected {
+		if sel {
+			anySelected = true
+			break
+		}
+	}
+
 	rendered := make([]string, len(cards))
 	for i, card := range cards {
 		isSel := i < len(selected) && selected[i]
 		isFoc := i == cursorIndex
 		isDbf := i < len(debuffed) && debuffed[i]
 		rendered[i] = RenderCard(card, isSel, isFoc, isDbf)
+		if anySelected && !isSel {
+			// Push unselected cards down by one row so selected ones appear lifted.
+			rendered[i] = "\n" + rendered[i]
+		}
+	}
+	if anySelected {
+		return lipgloss.JoinHorizontal(lipgloss.Top, rendered...)
 	}
 	return lipgloss.JoinHorizontal(lipgloss.Bottom, rendered...)
 }
 
 func padRight(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
+	if lipgloss.Width(s) >= width {
+		return s
 	}
-	return s + strings.Repeat(" ", width-len(s))
+	return s + strings.Repeat(" ", width-lipgloss.Width(s))
 }
 
 func padLeft(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
+	if lipgloss.Width(s) >= width {
+		return s
 	}
-	return strings.Repeat(" ", width-len(s)) + s
+	return strings.Repeat(" ", width-lipgloss.Width(s)) + s
 }
 
 func padCenter(s string, width int) string {
-	if len(s) >= width {
-		return s[:width]
+	w := lipgloss.Width(s)
+	if w >= width {
+		return s
 	}
-	left := (width - len(s)) / 2
-	right := width - len(s) - left
+	left := (width - w) / 2
+	right := width - w - left
 	return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
 }

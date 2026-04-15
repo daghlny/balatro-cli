@@ -2,10 +2,11 @@ package components
 
 import "github.com/charmbracelet/lipgloss"
 
-// Card dimensions
+// Card dimensions (outer, including the rounded border).
+// Advisory constants — renderer uses innerCardWidth/innerCardHeight in card.go.
 const (
-	CardWidth  = 9
-	CardHeight = 7
+	CardWidth  = 18
+	CardHeight = 14
 	JokerWidth  = 10
 	JokerHeight = 7
 )

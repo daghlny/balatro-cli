@@ -88,81 +88,60 @@ func RenderSidebar(game *engine.GameState, height int) string {
 	writeLabel(&b, i18n.T("ui.interest"), fmt.Sprintf("$%d", interest))
 	b.WriteString("\n")
 
-	// Hand type levels
+	// Hand type reference: always show all 10 hand types with their current
+	// (level-adjusted) chips × mult so the player has a scoring cheat sheet.
+	// Upgraded rows (Lv > 1) are highlighted in gold.
 	b.WriteString("──────────────────────\n")
+	title := lipgloss.NewStyle().Foreground(ColorCyan).Bold(true).
+		Render("  " + i18n.T("ui.hand_reference"))
+	b.WriteString(title + "\n")
+
+	nameWidth := 10 // visual columns, fits "皇家同花顺" (10 cols)
+	valWidth := 10  // visual columns for "  100 × 8"
 	for _, ht := range engine.AllHandTypes() {
 		level := game.HandLevels[ht]
-		htKey := handTypeKey(ht)
-		name := i18n.T(htKey)
+		data := engine.HandTypeDataTable[ht]
+		chips := data.BaseChips + (level-1)*data.LevelChips
+		mult := data.BaseMult + (level-1)*data.LevelMult
+
+		name := i18n.T(handTypeKey(ht))
+		nameCell := lipgloss.NewStyle().Width(nameWidth).Render(name)
+		valCell := lipgloss.NewStyle().Width(valWidth).Align(lipgloss.Right).
+			Render(fmt.Sprintf("%d × %d", chips, mult))
+
+		row := "  " + nameCell + valCell
+		color := ColorWhite
 		if level > 1 {
-			b.WriteString(fmt.Sprintf("  %-8s Lv.%d\n", name, level))
+			color = ColorGold
+			row += lipgloss.NewStyle().Foreground(ColorGold).
+				Render(fmt.Sprintf(" Lv%d", level))
 		}
+		b.WriteString(lipgloss.NewStyle().Foreground(color).Render(row) + "\n")
 	}
 
 	style := SidebarStyle.Height(height)
 	return style.Render(b.String())
 }
 
-// renderSidebarScore renders the Chips × Mult block for the sidebar.
-// Uses 2-line compact big digits that fit within ~22 char width.
+// renderSidebarScore renders the "last play" Chips × Mult summary for the
+// sidebar as a readable two-line text block.
+//
+// The full cinematic "big digits" display lives in the table area (see
+// RenderScoreDisplay in bignum.go); in the narrow 22-col sidebar a plain
+// colored text line reads much better than a cramped ASCII-art font.
 func renderSidebarScore(chips int, mult float64, total int) string {
-	chipsStr := FormatNumber(chips)
-	multStr := FormatNumber(int(mult))
-	totalStr := FormatNumber(total)
+	chipsStr := lipgloss.NewStyle().Foreground(ColorBlue).Bold(true).
+		Render(FormatNumber(chips))
+	multStr := lipgloss.NewStyle().Foreground(ColorRed).Bold(true).
+		Render(FormatNumber(int(mult)))
+	totalStr := lipgloss.NewStyle().Foreground(ColorGold).Bold(true).
+		Render(FormatNumber(total))
+	sep := lipgloss.NewStyle().Foreground(ColorWhite).Render(" ✕ ")
 
-	chipsRendered := renderCompactBig(chipsStr, ColorBlue)
-	multRendered := renderCompactBig(multStr, ColorRed)
-
-	// Build 2-line display:
-	// line 0:  <chips>  ✕  <mult>
-	// line 1:  <chips>  ✕  <mult>
-	chipsLines := strings.Split(chipsRendered, "\n")
-	multLines := strings.Split(multRendered, "\n")
-
-	xTop := lipgloss.NewStyle().Foreground(ColorWhite).Bold(true).Render("   ")
-	xBot := lipgloss.NewStyle().Foreground(ColorWhite).Bold(true).Render(" ✕ ")
-
-	var result strings.Builder
-	if len(chipsLines) >= 2 && len(multLines) >= 2 {
-		result.WriteString("  " + chipsLines[0] + xTop + multLines[0] + "\n")
-		result.WriteString("  " + chipsLines[1] + xBot + multLines[1] + "\n")
-	}
-
-	// Total line
-	result.WriteString("  = ")
-	result.WriteString(lipgloss.NewStyle().Foreground(ColorGold).Bold(true).Render(totalStr))
-	result.WriteString("\n")
-
-	return result.String()
-}
-
-// 2-line compact big digits (each digit is 2 chars wide × 2 lines tall)
-var compactDigits = map[rune][2]string{
-	'0': {"▄▀▄", "▀▄▀"},
-	'1': {" ▄ ", " █ "},
-	'2': {"▄▀▄", "▀▄▀"},
-	'3': {"▀▀▄", "▀▀▀"},
-	'4': {"▄ ▄", "▀▀█"},
-	'5': {"█▀▀", "▀▀█"},
-	'6': {"▄▀ ", "▀▀█"},
-	'7': {"▀▀█", "  █"},
-	'8': {"▄▀▄", "▀▀▀"},
-	'9': {"█▀▀", " ▀█"},
-	',': {"   ", " . "},
-}
-
-func renderCompactBig(s string, color lipgloss.Color) string {
-	lines := [2]strings.Builder{}
-	for _, ch := range s {
-		d, ok := compactDigits[ch]
-		if !ok {
-			d = [2]string{"   ", "   "}
-		}
-		lines[0].WriteString(d[0])
-		lines[1].WriteString(d[1])
-	}
-	style := lipgloss.NewStyle().Foreground(color).Bold(true)
-	return style.Render(lines[0].String()) + "\n" + style.Render(lines[1].String())
+	var b strings.Builder
+	b.WriteString("  " + chipsStr + sep + multStr + "\n")
+	b.WriteString("  = " + totalStr + "\n")
+	return b.String()
 }
 
 func writeLabel(b *strings.Builder, label, value string) {
