@@ -1,7 +1,6 @@
 package components
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -14,6 +13,26 @@ const (
 	innerCardWidth  = 16
 	innerCardHeight = 12
 )
+
+// rankGlyphs is a 3×3 block font used to draw the rank in each corner of the
+// card. Digits mirror the style of bignum.go so the visual language matches
+// the sidebar score display. Letters (A/J/Q/K) are added for face cards.
+var rankGlyphs = map[rune][3]string{
+	'0': {"█▀█", "█ █", "▀▀▀"},
+	'1': {" ▄█", "  █", "  ▀"},
+	'2': {"▀▀█", "█▀▀", "▀▀▀"},
+	'3': {"▀▀█", " ▀█", "▀▀▀"},
+	'4': {"█ █", "▀▀█", "  ▀"},
+	'5': {"█▀▀", "▀▀█", "▀▀▀"},
+	'6': {"█▀▀", "█▀█", "▀▀▀"},
+	'7': {"▀▀█", "  █", "  ▀"},
+	'8': {"█▀█", "█▀█", "▀▀▀"},
+	'9': {"█▀█", "▀▀█", "▀▀▀"},
+	'A': {"▄▀▄", "█▀█", "▀ ▀"},
+	'J': {"▀▀█", "  █", "▄█▀"},
+	'Q': {"█▀█", "█ █", "▀▀▄"},
+	'K': {"█ █", "█▀▄", "▀ ▀"},
+}
 
 // RenderCard renders a playing card.
 // selected: chosen for play/discard (gold border)
@@ -55,16 +74,26 @@ func RenderCard(card engine.Card, selected, focused, debuffed bool) string {
 }
 
 // buildCardLines returns the innerCardHeight inner rows for a card.
-// Layout: rank in the upper-left corner, suit symbol centered, rank mirrored
-// in the lower-right corner. Lots of whitespace by design — cards breathe.
+// Layout: large 3-line block rank in the upper-left corner, suit symbol
+// centered, rank mirrored in the lower-right corner.
 func buildCardLines(rank, suit string) []string {
 	const w = innerCardWidth
 	blank := strings.Repeat(" ", w)
 
-	// Upper-left rank: " K" + padding (right-padded to w).
-	topRank := padRight(fmt.Sprintf(" %s", rank), w)
-	// Lower-right rank: padding + "K " (left-padded to w).
-	bottomRank := padLeft(fmt.Sprintf("%s ", rank), w)
+	rankBlock := renderRankGlyph(rank) // 3 lines
+
+	// Upper-left: one column of left padding, then the glyph, pad right to w.
+	topLines := [3]string{
+		padRight(" "+rankBlock[0], w),
+		padRight(" "+rankBlock[1], w),
+		padRight(" "+rankBlock[2], w),
+	}
+	// Lower-right: mirror — pad left to w, with one trailing space column.
+	bottomLines := [3]string{
+		padLeft(rankBlock[0]+" ", w),
+		padLeft(rankBlock[1]+" ", w),
+		padLeft(rankBlock[2]+" ", w),
+	}
 	// Centered suit row.
 	suitRow := padCenter(suit, w)
 
@@ -72,11 +101,37 @@ func buildCardLines(rank, suit string) []string {
 	for i := range lines {
 		lines[i] = blank
 	}
-	// rows (0-indexed of 12): top pad, rank, blank*4, suit, blank*4, bottomRank, bot pad
-	lines[1] = topRank
+	// Row layout (12 rows): pad, rank×3, pad×2, suit, pad×2, rank×3.
+	lines[1] = topLines[0]
+	lines[2] = topLines[1]
+	lines[3] = topLines[2]
 	lines[6] = suitRow
-	lines[10] = bottomRank
+	lines[9] = bottomLines[0]
+	lines[10] = bottomLines[1]
+	lines[11] = bottomLines[2]
 	return lines
+}
+
+// renderRankGlyph renders a rank string ("K", "10", "A", ...) as a 3-line
+// block-font. Multi-character ranks are concatenated with a single space
+// column between glyphs so "10" still fits comfortably inside the card.
+func renderRankGlyph(rank string) [3]string {
+	var b [3]strings.Builder
+	for i, ch := range rank {
+		if i > 0 {
+			for j := 0; j < 3; j++ {
+				b[j].WriteByte(' ')
+			}
+		}
+		g, ok := rankGlyphs[ch]
+		if !ok {
+			g = [3]string{"   ", "   ", "   "}
+		}
+		for j := 0; j < 3; j++ {
+			b[j].WriteString(g[j])
+		}
+	}
+	return [3]string{b[0].String(), b[1].String(), b[2].String()}
 }
 
 // RenderCardBack renders a face-down card at the same outer size as RenderCard.
