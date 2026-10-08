@@ -169,3 +169,17 @@ func TestSellJoker(t *testing.T) {
 		t.Errorf("joker count = %d, want 0", len(g.Jokers))
 	}
 }
+
+// Cards held at the end of a round must come back: every round starts from the full deck.
+func TestDeckDoesNotShrinkAcrossRounds(t *testing.T) {
+	g := NewGame(NewSeededRNG(42))
+	g.StartGame()
+	for round := 0; round < 12; round++ {
+		g.startRound()
+		g.SelectedCards[0] = true
+		_ = g.PlayHand()
+		if got := len(g.Hand) + g.Deck.TotalRemaining(); got != 52 {
+			t.Fatalf("round %d: hand+deck = %d cards, want 52", round, got)
+		}
+	}
+}

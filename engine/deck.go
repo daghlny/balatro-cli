@@ -67,6 +67,13 @@ func (d *Deck) TotalRemaining() int {
 	return len(d.drawPile) + len(d.discardPile)
 }
 
+// Reclaim moves the discard pile back into the draw pile, so a new round starts with the
+// full deck (as in real balatro). Shuffle afterwards.
+func (d *Deck) Reclaim() {
+	d.drawPile = append(d.drawPile, d.discardPile...)
+	d.discardPile = nil
+}
+
 // AddCards adds cards to the draw pile (used by DNA joker).
 func (d *Deck) AddCards(cards []Card) {
 	d.drawPile = append(d.drawPile, cards...)

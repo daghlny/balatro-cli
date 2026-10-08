@@ -126,6 +126,11 @@ func (g *GameState) startRound() {
 	// play screen's table area show stale display from the previous round.
 	g.LastBreakdown = nil
 
+	// Return the cards still held from last round and everything discarded, so the deck
+	// doesn't shrink by a hand every round (it used to run out by ante 3).
+	g.Deck.Discard(g.Hand)
+	g.Hand = nil
+	g.Deck.Reclaim()
 	g.Deck.Shuffle()
 	g.RemainingHands = 4
 	g.RemainingDisc = 3
